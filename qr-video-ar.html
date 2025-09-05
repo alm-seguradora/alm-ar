@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
+    <title>QR → Vídeo AR</title>
+
+    <!-- A-Frame + MindAR -->
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://unpkg.com/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+
+    <style>
+      body{margin:0;background:#000}
+      #ui{position:fixed;left:0;right:0;top:0;display:flex;justify-content:center;padding:8px;pointer-events:none}
+      #tip{color:#fff;font:600 14px system-ui;background:rgba(0,0,0,.4);padding:6px 10px;border-radius:10px}
+      #cta{position:fixed;right:12px;bottom:12px;padding:10px 14px;border-radius:999px;border:none;font:600 14px system-ui;display:none}
+    </style>
+  </head>
+  <body>
+    <div id="ui"><div id="tip">Aponte a câmera para o mesmo QR</div></div>
+    <button id="cta">Abrir link</button>
+
+    <a-scene
+      mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; maxTrack: 1"
+      embedded
+      color-space="sRGB"
+      renderer="colorManagement: true, physicallyCorrectLights: true, antialias: true, alpha: true"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false">
+
+      <a-assets>
+        <!-- Seu vídeo -->
+        <video id="vid" src="./video.mp4" loop playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
+      </a-assets>
+
+      <a-camera look-controls="enabled: false" position="0 0 0"></a-camera>
+
+      <!-- Alvo = a imagem do seu QR dentro do targets.mind -->
+      <a-entity id="alvo" mindar-image-target="targetIndex: 0">
+        <!-- Tela do vídeo (width/height controlados por URL, ver PARTE F) -->
+        <a-plane id="screen"
+                 position="0 0 0"
+                 width="1"
+                 height="0.5625"
+                 material="shader: flat; src: #vid; transparent: false">
+        </a-plane>
+      </a-entity>
+    </a-scene>
+
+    <script>
+      // Parâmetros opcionais na URL:
+      // ?cta=https%3A%2F%2Fseulink.com&autoplay=1&unmute=1&width=1&ratio=16:9
+      const q = new URLSearchParams(location.search);
+      const ctaURL = q.get('cta');
+      const autoplay = q.get('autoplay') === '1';
+      const unmute = q.get('unmute') === '1';
+      const planeW = parseFloat(q.get('width') || '1');
+      const ratio = (q.get('ratio') || '16:9').split(':').map(Number);
+      const planeH = planeW * (ratio[1]/ratio[0]);
+
+      const screen = document.getElementById('screen');
+      screen.setAttribute('width', planeW);
+      screen.setAttribute('height', planeH);
+
+      const vid = document.getElementById('vid');
+      const alvo = document.getElementById('alvo');
+      const ctaBtn = document.getElementById('cta');
+
+      if (ctaURL){
+        ctaBtn.style.display = 'inline-block';
+        ctaBtn.onclick = () => window.open(ctaURL, '_blank', 'noopener,noreferrer');
+      }
+
+      let readyToPlay = autoplay;
+      const tryPlay = async () => {
+        try{
+          if (unmute) vid.muted = false; // iOS libera som após interação
+          await vid.play();
+        }catch(e){
+          document.getElementById('tip').textContent = 'Toque na tela para iniciar o vídeo';
+          const unlock = async () => {
+            try{
+              if (unmute) vid.muted = false;
+              await vid.play();
+              document.removeEventListener('touchend', unlock);
+              document.getElementById('tip').textContent = 'Aponte para o QR';
+            }catch{}
+          };
+          document.addEventListener('touchend', unlock, {once:true});
+        }
+      };
+
+      alvo.addEventListener('targetFound', async ()=>{
+        if (readyToPlay) await tryPlay();
+      });
+      // alvo.addEventListener('targetLost', ()=>{ vid.pause(); }); // se quiser pausar quando perder o alvo
+    </script>
+  </body>
+</html>
